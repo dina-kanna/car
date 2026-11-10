@@ -8,9 +8,11 @@ import {
 
 const AuthContext = createContext(null);
 
-// Safely read data from localStorage
+// Safely read localStorage
 const getStoredData = (key, fallback) => {
   try {
+    if (typeof window === "undefined") return fallback;
+
     const stored = localStorage.getItem(key);
     return stored ? JSON.parse(stored) : fallback;
   } catch (error) {
@@ -19,8 +21,17 @@ const getStoredData = (key, fallback) => {
   }
 };
 
+// Safely save localStorage
+const saveStoredData = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.error(`Error saving ${key}:`, error);
+  }
+};
+
 export function AuthProvider({ children }) {
-  // Logged-in user
+  // Current logged-in user
   const [user, setUser] = useState(() =>
     getStoredData("drivenow_user", null)
   );
@@ -35,13 +46,10 @@ export function AuthProvider({ children }) {
     getStoredData("drivenow_bookings", [])
   );
 
-  // Save user whenever login status changes
+  // Save logged-in user
   useEffect(() => {
     if (user) {
-      localStorage.setItem(
-        "drivenow_user",
-        JSON.stringify(user)
-      );
+      saveStoredData("drivenow_user", user);
     } else {
       localStorage.removeItem("drivenow_user");
     }
@@ -49,25 +57,19 @@ export function AuthProvider({ children }) {
 
   // Save registered users
   useEffect(() => {
-    localStorage.setItem(
-      "drivenow_users",
-      JSON.stringify(users)
-    );
+    saveStoredData("drivenow_users", users);
   }, [users]);
 
   // Save bookings
   useEffect(() => {
-    localStorage.setItem(
-      "drivenow_bookings",
-      JSON.stringify(bookings)
-    );
+    saveStoredData("drivenow_bookings", bookings);
   }, [bookings]);
 
   // LOGIN
   const login = (email, password) => {
     const foundUser = users.find(
       (item) =>
-        item.email?.toLowerCase() === email.toLowerCase() &&
+        item.email?.toLowerCase() === email.trim().toLowerCase() &&
         item.password === password
     );
 
@@ -83,14 +85,19 @@ export function AuthProvider({ children }) {
       email: foundUser.email,
     });
 
-    return { success: true };
+    return {
+      success: true,
+      message: "Login successful!",
+    };
   };
 
   // REGISTER
   const register = (name, email, password) => {
+    const normalizedEmail = email.trim().toLowerCase();
+
     const exists = users.some(
       (item) =>
-        item.email?.toLowerCase() === email.toLowerCase()
+        item.email?.toLowerCase() === normalizedEmail
     );
 
     if (exists) {
@@ -101,8 +108,8 @@ export function AuthProvider({ children }) {
     }
 
     const newUser = {
-      name,
-      email,
+      name: name.trim(),
+      email: normalizedEmail,
       password,
     };
 
@@ -112,23 +119,30 @@ export function AuthProvider({ children }) {
     ]);
 
     setUser({
-      name,
-      email,
+      name: newUser.name,
+      email: newUser.email,
     });
 
-    return { success: true };
+    return {
+      success: true,
+      message: "Registration successful!",
+    };
   };
 
   // ADD BOOKING
   const addBooking = (booking) => {
     if (!user) {
-      throw new Error(
-        "Please login before saving your booking."
-      );
+      return {
+        success: false,
+        message: "Please login before booking.",
+      };
     }
 
     if (!booking) {
-      throw new Error("Booking details are missing.");
+      return {
+        success: false,
+        message: "Booking details are missing.",
+      };
     }
 
     const newBooking = {
@@ -143,7 +157,10 @@ export function AuthProvider({ children }) {
       newBooking,
     ]);
 
-    return newBooking;
+    return {
+      success: true,
+      booking: newBooking,
+    };
   };
 
   // LOGOUT
@@ -179,9 +196,9 @@ export function AuthProvider({ children }) {
 export function useAuth() {
   const context = useContext(AuthContext);
 
-  if (!context) {
+  if (context === null) {
     throw new Error(
-      "useAuth must be used inside an AuthProvider."
+      "useAuth must be used inside an AuthProvider. Wrap your App with AuthProvider."
     );
   }
 
